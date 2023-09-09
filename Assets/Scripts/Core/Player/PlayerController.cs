@@ -5,6 +5,8 @@ namespace Core.Player
 {
     public class PlayerController : MonoBehaviour, IPlayerController
     {
+        public Transform Transform => transform;
+        
         [SerializeField] private CharacterController _characterController = null!;
 
         private PlayerMovement _movement = null!;
