@@ -13,18 +13,19 @@ namespace Core.Player
             _controller = controller;
         }
 
-        public void TryMove()
+        public bool TryMove()
         {
             var x = GetHorizontalInput();
             var z = GetVerticalInput();
 
             if (x == 0 && z == 0)
             {
-                return;
+                return false;
             }
 
             var direction = new Vector3(x, 0.0f, z) * Speed * Time.deltaTime;
             _controller.Move(direction);
+            return true;
         }
 
         private static float GetHorizontalInput() => Input.GetAxis("Horizontal");

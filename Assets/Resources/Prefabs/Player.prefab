@@ -131,3 +131,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _characterController: {fileID: 5802781039736701912}
+  _layerMask:
+    serializedVersion: 2
+    m_Bits: 64
