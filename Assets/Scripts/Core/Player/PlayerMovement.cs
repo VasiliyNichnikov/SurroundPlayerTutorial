@@ -5,16 +5,23 @@ namespace Core.Player
     public class PlayerMovement
     {
         private readonly CharacterController _controller;
-
+        private readonly ControlBlocker _blocker;
+        
         private const float Speed = 10.0f;
         
-        public PlayerMovement(CharacterController controller)
+        public PlayerMovement(CharacterController controller, ControlBlocker blocker)
         {
+            _blocker = blocker;
             _controller = controller;
         }
 
         public bool TryMove()
         {
+            if (_blocker.IsLocked)
+            {
+                return false;
+            }
+            
             var x = GetHorizontalInput();
             var z = GetVerticalInput();
 
@@ -28,7 +35,7 @@ namespace Core.Player
             return true;
         }
 
-        private static float GetHorizontalInput() => Input.GetAxis("Horizontal");
-        private static float GetVerticalInput() => Input.GetAxis("Vertical");
+        public static float GetHorizontalInput() => Input.GetAxis("Horizontal");
+        public static float GetVerticalInput() => Input.GetAxis("Vertical");
     }
 }

@@ -8,12 +8,17 @@ namespace Core.Player
     {
         public event Action? OnPlayerMovement;
         public Transform Transform => transform;
+
+        public PlayerMovement PlayerMovement { get; private set; } = null!;
+        public ControlBlocker ControlBlocker { get; private set; } = null!;
         
         [SerializeField] private CharacterController _characterController = null!;
-        [SerializeField] private LayerMask _layerMask;
-
-        private PlayerMovement _movement = null!;
+        [SerializeField] private LayerMask _layerMaskWalls;
+        [SerializeField] private Camera _camera = null!;
+        [SerializeField] private AnimationCurve _dashCurve = null!; 
         
+        private PlayerDashLogic _dashLogic = null!;
+
         private void Start()
         {
             Init();
@@ -21,12 +26,19 @@ namespace Core.Player
 
         private void Init()
         {
-            _movement = new PlayerMovement(_characterController);
+            ControlBlocker = new ControlBlocker();
+            PlayerMovement = new PlayerMovement(_characterController, ControlBlocker);
+            _dashLogic = new PlayerDashLogic(this, _layerMaskWalls, _dashCurve);
         }
 
         private void Update()
         {
-            var condition = _movement.TryMove();
+            if (Input.GetKeyDown(KeyCode.LeftShift))
+            {
+                _dashLogic.Dash();
+            }
+            
+            var condition = PlayerMovement.TryMove();
             if (condition)
             {
                 OnPlayerMovement?.Invoke();
@@ -55,7 +67,7 @@ namespace Core.Player
                 return;
             }
 
-            points = CircleSurroundings.CalculatePointsInCircleWithWalls(transform.position, 2.0f, _layerMask);
+            points = CircleSurroundings.CalculatePointsInCircleWithWalls(transform.position, 2.0f, _layerMaskWalls);
             foreach (var point in points)
             {
                 Gizmos.color = Color.magenta;

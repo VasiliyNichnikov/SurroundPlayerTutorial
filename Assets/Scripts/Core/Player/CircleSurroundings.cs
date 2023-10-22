@@ -7,7 +7,7 @@ namespace Core.Player
 {
     public static class CircleSurroundings
     {
-        private static readonly int NumberEnemiesAroundPlayer = 6;
+        private static readonly int NumberEnemiesAroundPlayer = 10;
         
         private static readonly float AngleIncrease = 360.0f / NumberEnemiesAroundPlayer;
 
