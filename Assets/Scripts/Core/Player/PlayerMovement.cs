@@ -7,7 +7,7 @@ namespace Core.Player
         private readonly CharacterController _controller;
         private readonly ControlBlocker _blocker;
         
-        private const float Speed = 10.0f;
+        private const float Speed = 7.0f;
         
         public PlayerMovement(CharacterController controller, ControlBlocker blocker)
         {

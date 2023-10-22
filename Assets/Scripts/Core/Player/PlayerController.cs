@@ -11,6 +11,7 @@ namespace Core.Player
 
         public PlayerMovement PlayerMovement { get; private set; } = null!;
         public ControlBlocker ControlBlocker { get; private set; } = null!;
+        public CharacterController CharacterController => _characterController;
         
         [SerializeField] private CharacterController _characterController = null!;
         [SerializeField] private LayerMask _layerMaskWalls;

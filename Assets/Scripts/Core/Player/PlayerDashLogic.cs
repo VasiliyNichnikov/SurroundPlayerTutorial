@@ -6,8 +6,10 @@ namespace Core.Player
 {
     public class PlayerDashLogic
     {
-        private const float MaximumDashLength = 5f;
+        private const float MaximumDashLength = 4.5f;
         private const float DashTime = 0.25f;
+
+        private const float ErrorRateDash = 0.05f;
 
         private IEnumerator? _dashAnimation;
         private readonly AnimationCurve _dashCurve;
@@ -25,14 +27,14 @@ namespace Core.Player
         {
             _controller.ControlBlocker.Lock();
             var startingPosition = _controller.transform.position;
-            var directionOfDash = new Vector3(PlayerMovement.GetHorizontalInput(), 0, PlayerMovement.GetVerticalInput());
+            var directionOfDash = new Vector3(PlayerMovement.GetHorizontalInput(), 0, PlayerMovement.GetVerticalInput()).normalized;
             var dashLength = 0.0f;
             
             if (Physics.Raycast(startingPosition, directionOfDash, out var hit, Mathf.Infinity, _layerMaskWalls))
             {
                 var hitPoint = hit.point;
                 hitPoint.y = startingPosition.y;
-                var distanceToWall = Vector3.Distance(startingPosition, hitPoint);
+                var distanceToWall = Vector3.Distance(startingPosition, hitPoint) - _controller.CharacterController.radius - ErrorRateDash;
                 dashLength = distanceToWall < MaximumDashLength ? distanceToWall : MaximumDashLength;
             }
             
