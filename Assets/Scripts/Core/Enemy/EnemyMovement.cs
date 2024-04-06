@@ -6,15 +6,8 @@ namespace Core.Enemy
 {
     public class EnemyMovement
     {
-        public EnemyState State { get; private set; }
-
         public float GetDistanceToPoint()
         {
-            if (State == EnemyState.Idle)
-            {
-                return float.MaxValue;
-            }
-            
             if (!_pointForMovement.HasValue)
             {
                 Debug.LogError("EnemyMovement.PointForMovement is null. State == Movement");
@@ -23,6 +16,9 @@ namespace Core.Enemy
 
             return Vector3.Distance(_pointForMovement.Value, _enemyTransform.position);
         }
+        
+
+        public Vector3 PointForMovement => _pointForMovement ?? Vector3.zero;
 
         private readonly Transform _enemyTransform;
         private readonly NavMeshAgent _agent;
@@ -47,6 +43,11 @@ namespace Core.Enemy
             {
                 return;
             }
+
+            // if (_path.status == NavMeshPathStatus.PathComplete)
+            // {
+            //     return;
+            // }
             
             _agent.SetPath(_path);
         }
@@ -55,11 +56,14 @@ namespace Core.Enemy
         {
             if (point == null)
             {
-                State = EnemyState.Idle;
                 return;
             }
 
-            State = EnemyState.Movement;
+            if (point.Value == _pointForMovement)
+            {
+                return;
+            }
+            
             var condition = _agent.CalculatePath(point.Value, _path);
             _pointForMovement = condition ? point : null;
         }

@@ -1,7 +1,7 @@
 ﻿#nullable enable
 using UnityEngine;
 
-namespace Core.RadiusModule
+namespace RadiusModule
 {
     /// <summary>
     /// Состояния радиуса на карте
@@ -13,9 +13,9 @@ namespace Core.RadiusModule
         Locked, // Заблокирована для движения (Как вариант из-за стены или потому что нельзя добраться)
     }
     
-    internal readonly struct RadiusPointData
+    internal class RadiusPointData
     {
-        public RadiusPointState State { get; } 
+        public RadiusPointState State { get; private set; } 
         public Transform Transform { get; }
         public float Angle { get; }
         
@@ -38,6 +38,21 @@ namespace Core.RadiusModule
             return new RadiusPointData(RadiusPointState.Occupied, pointTransform, angle);
         }
 
+        public void SetLocked()
+        {
+            State = RadiusPointState.Locked;
+        }
+
+        public void SetOccupied()
+        {
+            State = RadiusPointState.Occupied;
+        }
+
+        public void SetFree()
+        {
+            State = RadiusPointState.Free;
+        }
+        
         private RadiusPointData(RadiusPointState state, Transform transform, float angle)
         {
             State = state;

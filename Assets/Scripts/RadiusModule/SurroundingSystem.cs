@@ -4,14 +4,19 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace Core.RadiusModule
+namespace RadiusModule
 {
-    // TODO вынести все проверки с радиусом в отдельный метод и вызывать везде в начале
     /// <summary>
     /// Система для работы с радиусами и определения точек
     /// </summary>
-    public class SurroundingSystem
+    public class SurroundingSystem : IDisposable
     {
+        /// <summary>
+        /// Дополнительная длина
+        /// Используется для поиска дальней точки
+        /// </summary>
+        private const float AdditionalLength = 1.8f;
+
         // int - номер радиуса, int - индекс точки 
         // RadiusPointData - данные точки 
         private readonly Dictionary<int, Dictionary<int, RadiusPointData>> _pointData = new();
@@ -19,12 +24,22 @@ namespace Core.RadiusModule
         // ключ - номер радиуса, значение - длина радиуса
         private readonly Dictionary<int, float> _surroundingLength = new();
 
+        private readonly ICenterComponent _centerComponent;
         private readonly ITransformPointFactory _pointFactory;
+        private readonly int _layerMaskWalls;
 
-        public SurroundingSystem(ITransformPointFactory pointFactory)
+        public SurroundingSystem(SurroundingSystemContext context)
         {
-            _pointFactory = pointFactory;
-            InitializeRadius();
+            _centerComponent = context.CenterComponent;
+            _pointFactory = context.PointFactory;
+            _layerMaskWalls = context.LayerMaskWalls;
+            
+            InitializeRadius(context.RadiusSettings);
+
+            _centerComponent.OnPositionChanged += CheckAndUpdatePoints;
+            
+            // Обязателно после инициализации
+            CheckAndUpdatePoints();
         }
 
         /// <summary>
@@ -62,6 +77,7 @@ namespace Core.RadiusModule
             var firstPoint = GetPositionPoint(radiusIndex, startPointIndex);
             if (endPointIndex == startPointIndex)
             {
+                ChangeStatePointToOccupied(radiusIndex, startPointIndex);
                 return new[] { firstPoint };
             }
 
@@ -81,13 +97,34 @@ namespace Core.RadiusModule
             var lastPointIndex = GetPointIndexInRadius(radiusIndex, endPointIndex);
             while (currentPointIndex != lastPointIndex)
             {
-                points.Add(_pointData[radiusIndex][currentPointIndex].Transform.position);
+                var point = _pointData[radiusIndex][currentPointIndex];
+                var stepPosition = point.IsOccupied() ? GetFarthestPoint(point) : point.Transform.position;
+                points.Add(stepPosition);
                 currentPointIndex = GetPointIndexInRadius(radiusIndex, currentPointIndex + step);
             }
 
             // В конце добавляем последнюю точку, так как цикл ее не добавляет
             points.Add(GetPositionPoint(radiusIndex, lastPointIndex));
+            ChangeStatePointToOccupied(radiusIndex, lastPointIndex);
             return points;
+        }
+
+        public void Dispose()
+        {
+            _centerComponent.OnPositionChanged -= CheckAndUpdatePoints;
+        }
+
+        private void ChangeStatePointToOccupied(int radiusIndex, int pointIndex)
+        {
+            var data = _pointData[radiusIndex][pointIndex];
+            if (!data.IsFree())
+            {
+                Debug.LogError(
+                    $"SurroundingSystem.GetPathToPointInRadius: point {pointIndex} on radius {radiusIndex} not free");
+                return;
+            }
+
+            data.SetOccupied();
         }
 
         /// <summary>
@@ -101,39 +138,53 @@ namespace Core.RadiusModule
             }
 
             var radius = _surroundingLength[result!.Value];
-            return radius >= surroundingObject.GetDistanceToCenter();
+            return radius + AdditionalLength >= surroundingObject.GetDistanceToCenter();
+        }
+
+        /// <summary>
+        /// Получает дальнюю точку на расстояние AdditionalLength от переданной
+        /// </summary>
+        private Vector3 GetFarthestPoint(RadiusPointData data)
+        {
+            var center = _centerComponent.Position;
+            var direction = data.Transform.position - center;
+            return center + (direction * AdditionalLength);
         }
 
         /// <summary>
         /// Пока тестовый код, в будущем нужно брать из настроек
         /// </summary>
-        private void InitializeRadius()
+        private void InitializeRadius(IReadOnlyList<RadiusSettings> settingsList)
         {
-            // Для теста создадим один радиус
-            _surroundingLength[0] = 2f; // TODO будет браться из настроек
-            const float angleIncrease = 35f; // TODO будет браться из настроек
-
-            foreach (var kvp in _surroundingLength)
+            for (var i = 0; i < settingsList.Count; i++)
             {
+                var settings = settingsList[i];
+
+                var lengthFromCenter = settings.LengthFromCenter;
+                var angleIncrease = settings.AngleIncrease;
+                
+                _surroundingLength[i] = settings.LengthFromCenter;
+
                 var angle = 0f;
                 var pointIndex = 0;
-                _pointData[kvp.Key] = new Dictionary<int, RadiusPointData>();
+                _pointData[i] = new Dictionary<int, RadiusPointData>();
                 var numberPoints = Mathf.FloorToInt(360f / angleIncrease);
-                for (var i = 0; i < numberPoints; i++)
+                
+                for (var j = 0; j < numberPoints; j++)
                 {
-                    var pointTransform = _pointFactory.CreatePoint(angle, kvp.Value);
+                    var pointTransform = _pointFactory.CreatePoint(_centerComponent.Position, angle, lengthFromCenter);
 #if UNITY_EDITOR
-                    pointTransform.name += $"_{i}";
+                    pointTransform.name += $"_{j}";
 #endif
-                    if (_pointData[kvp.Key].ContainsKey(pointIndex))
+                    if (_pointData[i].ContainsKey(pointIndex))
                     {
                         Debug.LogError(
-                            $"SurroundingSystem.InitializeRadius: point with index {pointIndex} contains in radius with id {kvp.Key}");
+                            $"SurroundingSystem.InitializeRadius: point with index {pointIndex} contains in radius with id {i}");
                         pointIndex++;
                         continue;
                     }
 
-                    _pointData[kvp.Key][pointIndex] = RadiusPointData.Default(pointTransform, angle);
+                    _pointData[i][pointIndex] = RadiusPointData.Default(pointTransform, angle);
 
                     angle -= angleIncrease;
                     pointIndex++;
@@ -259,6 +310,27 @@ namespace Core.RadiusModule
 
             result = null;
             return false;
+        }
+
+        private void CheckAndUpdatePoints()
+        {
+            var center = _centerComponent.Position;
+            foreach (var kvp in _pointData)
+            {
+                foreach (var pointData in kvp.Value)
+                {
+                    // Пока лучшее решение, просто брать и сбрасывать все занятые точки
+                    pointData.Value.SetFree();
+                    
+                    var radiusLength = _surroundingLength[kvp.Key];
+                    var direction = pointData.Value.Transform.position - center;
+                    if (Physics.Raycast(center, direction, radiusLength, _layerMaskWalls))
+                    {
+                        // Точка заблокирована стенной
+                        pointData.Value.SetLocked();
+                    }
+                }
+            }
         }
     }
 }

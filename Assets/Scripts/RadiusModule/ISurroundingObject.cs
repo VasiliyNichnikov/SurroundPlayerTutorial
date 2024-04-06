@@ -1,7 +1,7 @@
 ﻿#nullable enable
 using UnityEngine;
 
-namespace Core.RadiusModule
+namespace RadiusModule
 {
     /// <summary>
     /// Интерфейс для объектов, которые могут стоять в радиусе

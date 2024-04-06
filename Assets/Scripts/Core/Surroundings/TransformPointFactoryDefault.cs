@@ -1,24 +1,23 @@
 ﻿#nullable enable
 using Core.Utils;
+using RadiusModule;
 using UnityEngine;
 
-namespace Core.RadiusModule
+namespace Core.Surroundings
 {
     public class TransformPointFactoryDefault : ITransformPointFactory
     {
         private readonly Transform _parentPoints;
-        private readonly Vector3 _centerPoints;
 
-        public TransformPointFactoryDefault(Transform parentPoints, Vector3 centerPoints)
+        public TransformPointFactoryDefault(Transform parentPoints)
         {
             _parentPoints = parentPoints;
-            _centerPoints = centerPoints;
         }
         
-        public Transform CreatePoint(float angle, float lengthRadius)
+        public Transform CreatePoint(Vector3 centerPoint, float angle, float lengthRadius)
         {
             var point = new GameObject("RadiusPoint").transform;
-            point.position = _centerPoints + MyUtils.GetVectorFromAngle(angle) * lengthRadius; // TODO MyUtils нужно внести сюда
+            point.position = centerPoint + MyUtils.GetVectorFromAngle(angle) * lengthRadius;
             point.SetParent(_parentPoints, true);
             return point;
         }
