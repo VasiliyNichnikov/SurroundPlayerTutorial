@@ -25,7 +25,7 @@ namespace RadiusModule
                 Path = path;
             }
         }
-        
+
         /// <summary>
         /// Дополнительная длина
         /// Используется для поиска дальней точки
@@ -39,6 +39,8 @@ namespace RadiusModule
         // ключ - номер радиуса, значение - длина радиуса
         private readonly Dictionary<int, float> _surroundingLength = new();
 
+        private ICheckerForPointUpdates _checkerForPointUpdates;
+
         private readonly ICenterComponent _centerComponent;
         private readonly ITransformPointFactory _pointFactory;
         private readonly int _layerMaskWalls;
@@ -48,7 +50,9 @@ namespace RadiusModule
             _centerComponent = context.CenterComponent;
             _pointFactory = context.PointFactory;
             _layerMaskWalls = context.LayerMaskWalls;
-            
+# if UNITY_EDITOR || DEBUG
+            _checkerForPointUpdates = new DebugCheckerForPointUpdates();
+#endif 
             InitializeRadius(context.RadiusSettings);
 
             _centerComponent.OnPositionChanged += CheckAndUpdatePoints;
@@ -93,6 +97,8 @@ namespace RadiusModule
 
         /// <summary>
         /// Проверяет может ли заданный объект попасть в радиус
+        /// Тут конечно не очень, так как мы смотрим только на свободную ячейку и не проверяем можно ли дойти
+        /// до точки через другие точки.
         /// </summary>
         public bool CanJoinRadius(ISurroundingObject surroundingObject)
         {
@@ -165,6 +171,9 @@ namespace RadiusModule
                     pointIndex++;
                 }
             }
+
+            _checkerForPointUpdates =
+                new DefaultCheckerForPointUpdates(_centerComponent, _surroundingLength, _layerMaskWalls);
         }
 
         private Vector3 GetPositionPoint(int radiusIndex, int pointIndex) =>
@@ -368,53 +377,6 @@ namespace RadiusModule
             return points.AsReadOnly();
         }
 
-        private void CheckAndUpdatePoints()
-        {
-            var center = _centerComponent.Position;
-            foreach (var kvp in _pointData)
-            {
-                foreach (var pointData in kvp.Value)
-                {
-                    // Пока лучшее решение, просто брать и сбрасывать все занятые точки
-                    pointData.Value.SetFree();
-                    
-                    var radiusLength = _surroundingLength[kvp.Key];
-                    var direction = pointData.Value.Transform.position - center;
-                    if (Physics.Raycast(center, direction, radiusLength, _layerMaskWalls))
-                    {
-                        // Точка заблокирована стенной
-                        pointData.Value.SetLocked();
-                    }
-                    
-#if UNITY_EDITOR
-                    // pointData.Value.Transform.name += "_" + pointData.Value.State;
-#endif
-                }
-            }
-            
-            // Тестовы код
-            /*var center = _centerComponent.Position;
-            foreach (var kvp in _pointData)
-            {
-                foreach (var pointData in kvp.Value)
-                {
-                    // Пока лучшее решение, просто брать и сбрасывать все занятые точки
-                    pointData.Value.SetOccupied();
-                    
-                    var radiusLength = _surroundingLength[kvp.Key];
-                    var direction = pointData.Value.Transform.position - center;
-                    if ((kvp.Key == 0 && pointData.Key == 4) || (kvp.Key == 1 && pointData.Key == 12)) // Physics.Raycast(center, direction, radiusLength, _layerMaskWalls)
-                    {
-                        // Точка заблокирована стенной
-                        pointData.Value.SetFree();
-                    }
-                    
-#if UNITY_EDITOR
-                    pointData.Value.Transform.name += $"_{pointData.Value.State}";
-#endif
-                }
-            }*/
-            
-        }
+        private void CheckAndUpdatePoints() => _checkerForPointUpdates.Check(_pointData);
     }
 }
