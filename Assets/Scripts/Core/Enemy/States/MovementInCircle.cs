@@ -10,6 +10,19 @@ namespace Core.Enemy.States
         private readonly EnemyController _controller;
         private readonly DefaultStateMachine _stateMachine;
         private readonly SurroundingManager _surroundingManager;
+
+        public Vector3 LastPoint
+        {
+            get
+            {
+                if (_points == null)
+                {
+                    return Vector3.zero;
+                }
+
+                return _points[^1];
+            }
+        }
         
         public MovementInCircle(EnemyController controller, DefaultStateMachine stateMachine)
         {
@@ -18,7 +31,7 @@ namespace Core.Enemy.States
             _stateMachine = stateMachine;
         }
 
-        private ReadOnlyCollection<Vector3> _points = null!;
+        private ReadOnlyCollection<Vector3>? _points;
         private int _selectedPointIndex;
         
         private float _radius;
@@ -41,6 +54,11 @@ namespace Core.Enemy.States
 
         public override void LogicUpdate()
         {
+            if (_points == null)
+            {
+                return;
+            }
+            
             // Попытка движения по заданным точкам // TODO: 0.6 - в настройки
             if (_controller.DistanceToPoint <= 0.6f && _selectedPointIndex + 1 < _points.Count)
             {

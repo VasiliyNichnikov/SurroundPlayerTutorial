@@ -12,17 +12,17 @@ namespace Core.Enemy
     {
         public float DistanceToPoint => _movement.GetDistanceToPoint();
         public StateBase MovementState { get; private set; } = null!;
-        public StateBase MovementInCircle { get; private set; } = null!;
+        public StateBase MovementInCircle => _movementInCircle;
         public StateBase IdleState { get; private set; } = null!;
         public IPlayerController PlayerController { get; private set; } = null!;
 
-        public float Speed => _agent.speed;
         
         [SerializeField]
         private NavMeshAgent _agent = null!;
 
         private EnemyMovement _movement = null!;
-        private DefaultStateMachine _stateMachine = null!; 
+        private DefaultStateMachine _stateMachine = null!;
+        private MovementInCircle _movementInCircle;
 
         public void Init(IPlayerController playerController)
         {
@@ -54,7 +54,7 @@ namespace Core.Enemy
             _stateMachine = new DefaultStateMachine();
             IdleState = new IdleState(this, _stateMachine);
             MovementState = new MovementState(this, _stateMachine);
-            MovementInCircle = new MovementInCircle(this, _stateMachine);
+            _movementInCircle = new MovementInCircle(this, _stateMachine);
             _stateMachine.Init(IdleState);
         }
         
@@ -64,6 +64,12 @@ namespace Core.Enemy
             {
                 Gizmos.color = Color.yellow;
                 Gizmos.DrawSphere(_movement.PointForMovement, 0.35f);
+
+                Gizmos.color = Color.red;
+                if (_movementInCircle.LastPoint != Vector3.zero)
+                {
+                    Gizmos.DrawSphere(_movementInCircle.LastPoint, 0.35f);
+                }
             }
         }
 

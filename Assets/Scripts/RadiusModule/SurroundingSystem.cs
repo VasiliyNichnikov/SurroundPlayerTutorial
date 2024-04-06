@@ -328,6 +328,16 @@ namespace RadiusModule
                     {
                         // Точка заблокирована стенной
                         pointData.Value.SetLocked();
+                        
+#if UNITY_EDITOR
+                        pointData.Value.Transform.name += $"_locked";
+#endif
+                    }
+                    else
+                    {
+#if UNITY_EDITOR
+                        pointData.Value.Transform.name += $"_unlocked";
+#endif
                     }
                 }
             }
