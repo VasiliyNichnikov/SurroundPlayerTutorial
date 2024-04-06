@@ -14,5 +14,10 @@ namespace RadiusModule
         /// Центр - точка из которой считаем радиусы
         /// </summary>
         float GetDistanceToCenter();
+
+        /// <summary>
+        /// Проверяем возможно ли дойти до заданной точки
+        /// </summary>
+        bool CheckAvailabilityOfPoint(Vector3 pointPosition);
     }
 }

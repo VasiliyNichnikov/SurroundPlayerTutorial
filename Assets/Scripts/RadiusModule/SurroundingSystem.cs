@@ -1,6 +1,7 @@
 ﻿#nullable enable
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using UnityEngine;
 
@@ -11,6 +12,20 @@ namespace RadiusModule
     /// </summary>
     public class SurroundingSystem : IDisposable
     {
+        private struct PathResultData
+        {
+            public int RadiusIndex { get; }
+            public int EndPointIndex { get; }
+            public ReadOnlyCollection<Vector3> Path { get; }
+
+            public PathResultData(int radiusIndex, int endPointIndex, ReadOnlyCollection<Vector3> path)
+            {
+                RadiusIndex = radiusIndex;
+                EndPointIndex = endPointIndex;
+                Path = path;
+            }
+        }
+        
         /// <summary>
         /// Дополнительная длина
         /// Используется для поиска дальней точки
@@ -47,66 +62,15 @@ namespace RadiusModule
         /// </summary>
         public IEnumerable<Vector3> GetPathToPointInRadius(ISurroundingObject surroundingObject)
         {
-            // 1. Сначала получаем радиус
-            // 2. Затем из этого радиуса получаем все доступные точки
-            // 3. Сортируем точки относительно surroundingObject
-            // 4. Выбираем самую первую точку
-            // 5. Прокладываем маршрут относительно не занятых точек в радиусе
-            if (!TryGetNearestAvailableRadius(out var radiusIndexRaw))
+            if (!TryGetNearestAvailableRoute(surroundingObject, out var dataRaw))
             {
-                Debug.LogError("SurroundingSystem.GetPathToPointInRadius: radiusIndex is null");
+                Debug.LogError("SurroundingSystem.GetPathToPointInRadius: failed to get a route");
                 return Array.Empty<Vector3>();
             }
 
-            var radiusIndex = radiusIndexRaw!.Value;
-            if (!TryGetNearestFreeOrOccupiedPointInRadius(surroundingObject, radiusIndex, out var startPointIndexRaw))
-            {
-                Debug.LogError("SurroundingSystem.GetPathToPointInRadius: startPointIndex is null");
-                return Array.Empty<Vector3>();
-            }
-
-            var startPointIndex = startPointIndexRaw!.Value;
-            if (!TryGetNearestFreePointInRadius(surroundingObject, radiusIndex, out var endPointIndexRaw))
-            {
-                Debug.LogError("SurroundingSystem.GetPathToPointInRadius: endPointIndex is null");
-                return Array.Empty<Vector3>();
-            }
-
-            var endPointIndex = endPointIndexRaw!.Value;
-
-            var firstPoint = GetPositionPoint(radiusIndex, startPointIndex);
-            if (endPointIndex == startPointIndex)
-            {
-                ChangeStatePointToOccupied(radiusIndex, startPointIndex);
-                return new[] { firstPoint };
-            }
-
-            var points = new List<Vector3>();
-            var pointsCount = _pointData[radiusIndex].Count;
-            // Расстояние если идти по часовой стрелки
-            var clockwiseDistance = endPointIndex - startPointIndex > 0
-                ? endPointIndex - startPointIndex
-                : pointsCount - startPointIndex + endPointIndex;
-            // Расстояние если идти против часовой стрелки
-            var counterclockwiseDistance = endPointIndex - startPointIndex > 0
-                ? pointsCount - endPointIndex + startPointIndex
-                : Mathf.Abs(endPointIndex - startPointIndex);
-
-            var step = clockwiseDistance < counterclockwiseDistance ? 1 : -1;
-            var currentPointIndex = GetPointIndexInRadius(radiusIndex, startPointIndex + step);
-            var lastPointIndex = GetPointIndexInRadius(radiusIndex, endPointIndex);
-            while (currentPointIndex != lastPointIndex)
-            {
-                var point = _pointData[radiusIndex][currentPointIndex];
-                var stepPosition = point.IsOccupied() ? GetFarthestPoint(point) : point.Transform.position;
-                points.Add(stepPosition);
-                currentPointIndex = GetPointIndexInRadius(radiusIndex, currentPointIndex + step);
-            }
-
-            // В конце добавляем последнюю точку, так как цикл ее не добавляет
-            points.Add(GetPositionPoint(radiusIndex, lastPointIndex));
-            ChangeStatePointToOccupied(radiusIndex, lastPointIndex);
-            return points;
+            var data = dataRaw!.Value;
+            ChangeStatePointToOccupied(data.RadiusIndex, data.EndPointIndex);
+            return data.Path;
         }
 
         public void Dispose()
@@ -132,12 +96,23 @@ namespace RadiusModule
         /// </summary>
         public bool CanJoinRadius(ISurroundingObject surroundingObject)
         {
-            if (!TryGetNearestAvailableRadius(out var result))
+            int? result = null;
+            foreach (var kvp in _pointData)
+            {
+                var isAvailableRadius = kvp.Value.Any(d => d.Value.IsFree());
+                if (isAvailableRadius)
+                {
+                    result = kvp.Key;
+                    break;
+                }
+            }
+
+            if (result == null)
             {
                 return false;
             }
-
-            var radius = _surroundingLength[result!.Value];
+            
+            var radius = _surroundingLength[result.Value];
             return radius + AdditionalLength >= surroundingObject.GetDistanceToCenter();
         }
 
@@ -253,6 +228,11 @@ namespace RadiusModule
             }
 
             var availablePoints = GetPointsInRadiusWithCheck(radiusIndex, onCheckPoint);
+            if (availablePoints.Count == 0)
+            {
+                result = 0;
+                return false;
+            }
             result = FindNearestPoint(radiusIndex, surroundingObject, availablePoints);
             return true;
         }
@@ -295,21 +275,97 @@ namespace RadiusModule
             var selectedPoints = radius.Where(kvp => onCheckPoint(kvp.Value.State)).Select(kvp => kvp.Key).ToList();
             return selectedPoints;
         }
-
-        private bool TryGetNearestAvailableRadius(out int? result)
+        
+        private bool TryGetNearestAvailableRoute(ISurroundingObject surroundingObject, out PathResultData? data)
         {
-            foreach (var kvp in _pointData)
+            // 1. Проходимся по всем радиусам
+            // 2. Затем из этого радиуса получаем все доступные точки
+            // 3. Сортируем точки относительно surroundingObject
+            // 4. Выбираем самую первую точку
+            // 5. Прокладываем маршрут относительно не занятых точек в радиусе
+            for (var radiusIndex = 0; radiusIndex < _pointData.Count; radiusIndex++)
             {
-                var isAvailableRadius = kvp.Value.Any(d => d.Value.IsFree());
-                if (isAvailableRadius)
+                // Пытаемся получить ближайшую свободную точку или занятую врагом
+                // Эта точка будет служить началом маршрута
+                if (!TryGetNearestFreeOrOccupiedPointInRadius(surroundingObject, radiusIndex, out var startPointIndexRaw))
                 {
-                    result = kvp.Key;
+                    continue;
+                }
+
+                var startPointIndex = startPointIndexRaw!.Value;
+                
+                // Пытаемся получить ближайшую свободну точку 
+                // Эта точка будет считаться конечным путем
+                if (!TryGetNearestFreePointInRadius(surroundingObject, radiusIndex, out var endPointIndexRaw))
+                {
+                    continue;
+                }
+
+                var endPointIndex = endPointIndexRaw!.Value;
+                
+                ReadOnlyCollection<Vector3> path;
+                if (startPointIndex == endPointIndex)
+                {
+                    var firstPoint = GetPositionPoint(radiusIndex, startPointIndex);
+                    if (!surroundingObject.CheckAvailabilityOfPoint(firstPoint))
+                    {
+                        continue;
+                    }
+                    
+                    path = new ReadOnlyCollection<Vector3>(new List<Vector3> { firstPoint });
+                    data = new PathResultData(radiusIndex, endPointIndex, path);
                     return true;
                 }
+
+                path = GetRouteBetweenPoints(radiusIndex, startPointIndex, endPointIndex);
+                if (!path.All(surroundingObject.CheckAvailabilityOfPoint))
+                {
+                    continue;
+                }
+
+                data = new PathResultData(radiusIndex, endPointIndex, path);
+                return true;
             }
 
-            result = null;
+            data = null;
             return false;
+        }
+
+        /// <summary>
+        /// Возвращает маршрут в радиусе между точками
+        /// </summary>
+        /// <param name="radiusIndex">Номер радиуса</param>
+        /// <param name="startPointIndex">Начальная точка от коротой пойдет объект</param>
+        /// <param name="endPointIndex">Конечная точка к которой пойдет объект</param>
+        /// <returns></returns>
+        private ReadOnlyCollection<Vector3> GetRouteBetweenPoints(int radiusIndex, int startPointIndex, int endPointIndex)
+        {
+            var points = new List<Vector3>();
+            var pointsCount = _pointData[radiusIndex].Count;
+            // Расстояние если идти по часовой стрелки
+            var clockwiseDistance = endPointIndex - startPointIndex > 0
+                ? endPointIndex - startPointIndex
+                : pointsCount - startPointIndex + endPointIndex;
+            // Расстояние если идти против часовой стрелки
+            var counterclockwiseDistance = endPointIndex - startPointIndex > 0
+                ? pointsCount - endPointIndex + startPointIndex
+                : Mathf.Abs(endPointIndex - startPointIndex);
+
+            var step = clockwiseDistance < counterclockwiseDistance ? 1 : -1;
+            var currentPointIndex = GetPointIndexInRadius(radiusIndex, startPointIndex + step);
+            var lastPointIndex = GetPointIndexInRadius(radiusIndex, endPointIndex);
+            while (currentPointIndex != lastPointIndex)
+            {
+                var point = _pointData[radiusIndex][currentPointIndex];
+                var stepPosition = point.IsOccupied() ? GetFarthestPoint(point) : point.Transform.position;
+                points.Add(stepPosition);
+                currentPointIndex = GetPointIndexInRadius(radiusIndex, currentPointIndex + step);
+            }
+            
+            // В конце добавляем последнюю точку, так как цикл ее не добавляет
+            points.Add(GetPositionPoint(radiusIndex, lastPointIndex));
+
+            return points.AsReadOnly();
         }
 
         private void CheckAndUpdatePoints()
@@ -328,19 +384,37 @@ namespace RadiusModule
                     {
                         // Точка заблокирована стенной
                         pointData.Value.SetLocked();
-                        
-#if UNITY_EDITOR
-                        pointData.Value.Transform.name += $"_locked";
-#endif
                     }
-                    else
-                    {
+                    
 #if UNITY_EDITOR
-                        pointData.Value.Transform.name += $"_unlocked";
+                    // pointData.Value.Transform.name += "_" + pointData.Value.State;
 #endif
-                    }
                 }
             }
+            
+            // Тестовы код
+            /*var center = _centerComponent.Position;
+            foreach (var kvp in _pointData)
+            {
+                foreach (var pointData in kvp.Value)
+                {
+                    // Пока лучшее решение, просто брать и сбрасывать все занятые точки
+                    pointData.Value.SetOccupied();
+                    
+                    var radiusLength = _surroundingLength[kvp.Key];
+                    var direction = pointData.Value.Transform.position - center;
+                    if ((kvp.Key == 0 && pointData.Key == 4) || (kvp.Key == 1 && pointData.Key == 12)) // Physics.Raycast(center, direction, radiusLength, _layerMaskWalls)
+                    {
+                        // Точка заблокирована стенной
+                        pointData.Value.SetFree();
+                    }
+                    
+#if UNITY_EDITOR
+                    pointData.Value.Transform.name += $"_{pointData.Value.State}";
+#endif
+                }
+            }*/
+            
         }
     }
 }

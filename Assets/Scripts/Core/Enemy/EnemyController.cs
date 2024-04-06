@@ -22,12 +22,14 @@ namespace Core.Enemy
 
         private EnemyMovement _movement = null!;
         private DefaultStateMachine _stateMachine = null!;
-        private MovementInCircle _movementInCircle;
+        private MovementInCircle _movementInCircle = null!;
+        private NavMeshPath _navMeshPath = null!;
 
         public void Init(IPlayerController playerController)
         {
             PlayerController = playerController;
             _movement = new EnemyMovement(transform, _agent);
+            _navMeshPath = new NavMeshPath();
 
             InitStates();
         }
@@ -75,5 +77,10 @@ namespace Core.Enemy
 
         public Vector3 Position => transform.position;
         public float GetDistanceToCenter() => Vector3.Distance(PlayerController.Transform.position, transform.position);
+        public bool CheckAvailabilityOfPoint(Vector3 pointPosition)
+        {
+            _agent.CalculatePath(pointPosition, _navMeshPath);
+            return _navMeshPath.status == NavMeshPathStatus.PathComplete;
+        }
     }
 }

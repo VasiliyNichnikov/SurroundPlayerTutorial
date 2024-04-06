@@ -16,8 +16,8 @@ MonoBehaviour:
   - LengthFromCenter: 2
     AngleIncrease: 35
   - LengthFromCenter: 3
-    AngleIncrease: 35
+    AngleIncrease: 20
   - LengthFromCenter: 4
-    AngleIncrease: 35
+    AngleIncrease: 15
   - LengthFromCenter: 5
-    AngleIncrease: 35
+    AngleIncrease: 10
